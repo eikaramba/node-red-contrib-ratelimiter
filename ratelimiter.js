@@ -276,10 +276,13 @@ module.exports = function(RED) {
                         }
                 
                         // Update status to show current message count and burst credits
+                        let statusText = `msgs: ${node.sentTimestamps.length}/${node.maxTokens}`;
+                        if(node.allowburst) statusText += ` (burst credits: ${node.burstCredits})`;
+                        
                         node.status({
                             fill: "green",
                             shape: "dot",
-                            text: `msgs: ${node.sentTimestamps.length}/${node.maxTokens} (burst credits: ${node.burstCredits})`
+                            text: statusText
                         });
                     } else {
                         // Message is dropped
@@ -288,11 +291,12 @@ module.exports = function(RED) {
                             send([null, msg]);
                         }
                 
-                        // Update status to show drop
+                        let dropStatusText = `dropped`;
+                        if(node.allowburst) dropStatusText += ` (burst credits: ${node.burstCredits})`;
                         node.status({
                             fill: "red",
                             shape: "ring",
-                            text: `dropped (burst credits: ${node.burstCredits})`
+                            text: dropStatusText
                         });
                     }
                 
