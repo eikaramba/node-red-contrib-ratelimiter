@@ -368,5 +368,5 @@ module.exports = function(RED) {
             });
         }
     }
-    RED.nodes.registerType("delay",DelayNode);
+    RED.nodes.registerType("ratelimiter",DelayNode);
 }
