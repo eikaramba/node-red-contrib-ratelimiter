@@ -219,14 +219,17 @@ module.exports = function(RED) {
         if (node.pauseType === "rate") {
             node.on("input", function(msg, send, done) {
                 if (node.drop) {
-                    // Token bucket implementation
                     const now = Date.now();
-
+        
                     if (node.lastSentTime === null) {
                         // First message, initialize time and send immediately
                         node.lastSentTime = now;
                         node.tokens = node.maxTokens - 1;
-                        send(msg);
+                        if (node.outputs === 2) {
+                            send([msg, null]);
+                        } else {
+                            send(msg);
+                        }
                         done();
                         return;
                     }
@@ -242,13 +245,14 @@ module.exports = function(RED) {
                         } else {
                             node.tokens = Math.min(1, node.tokens + newTokens);
                         }
-                        node.lastSentTime = now;
+
+                        // Only update lastSentTime when we actually add tokens
+                        node.lastSentTime = now - (elapsed % node.rate); // Keep remainder for accurate token accumulation
                     }
 
                     // Check if we can send the message
                     if (node.tokens >= 1) {
                         node.tokens -= 1;
-                        send(msg);
                         if (node.outputs === 2) {
                             send([msg, null]);
                         } else {
@@ -269,11 +273,83 @@ module.exports = function(RED) {
                         node.rate = node.fixedrate;
                         node.status({fill:"blue",shape:"ring",text:"reset"});
                     }
-
+        
                     done();
                 } else {
                     // Original queuing behavior for when drop is false
-                    // ... [keep existing non-drop rate limiting code] ...
+                    if (!msg.hasOwnProperty("reset")) {
+                        var m = RED.util.cloneMessage(msg);
+                        delete m.flush;
+                        if (Object.keys(m).length > 1) {
+                            if (node.intervalID !== -1) {
+                                if (node.allowrate && m.hasOwnProperty("rate") && !isNaN(parseFloat(m.rate)) && node.rate !== m.rate) {
+                                    node.rate = m.rate;
+                                    clearInterval(node.intervalID);
+                                    node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
+                                }
+                                var max_msgs = maxKeptMsgsCount(node);
+                                if ((max_msgs > 0) && (node.buffer.length >= max_msgs)) {
+                                    node.buffer = [];
+                                    node.error(RED._("delay.errors.too-many"), m);
+                                } else if (msg.toFront === true) {
+                                    node.buffer.unshift({msg: m, send: send, done: done});
+                                    node.reportDepth();
+                                } else {
+                                    node.buffer.push({msg: m, send: send, done: done});
+                                    node.reportDepth();
+                                }
+                            }
+                            else {
+                                if (node.allowrate && m.hasOwnProperty("rate") && !isNaN(parseFloat(m.rate))) {
+                                    node.rate = m.rate;
+                                }
+                                send(m);
+                                node.reportDepth();
+                                node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
+                                done();
+                            }
+                        }
+                    }
+        
+                    if (msg.hasOwnProperty("flush")) {
+                        var len = node.buffer.length;
+                        if (typeof(msg.flush) == 'number') { 
+                            len = Math.min(Math.floor(msg.flush), len); 
+                        }
+                        if (len === 0) {
+                            clearInterval(node.intervalID);
+                            node.intervalID = -1;
+                        }
+                        else {
+                            while (len > 0) {
+                                const msgInfo = node.buffer.shift();
+                                delete msgInfo.msg.flush;
+                                delete msgInfo.msg.reset;
+                                if (Object.keys(msgInfo.msg).length > 1) {
+                                    send(msgInfo.msg);
+                                    msgInfo.done();
+                                }
+                                len = len - 1;
+                            }
+                            clearInterval(node.intervalID);
+                            node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
+                        }
+                        node.status({fill:"blue",shape:"dot",text:node.buffer.length});
+                        done();
+                    }
+        
+                    if (msg.hasOwnProperty("reset")) {
+                        if (msg.flush === undefined) {
+                            if (node.intervalID !== -1) {
+                                clearInterval(node.intervalID);
+                                node.intervalID = -1;
+                            }
+                        }
+                        node.buffer = [];
+                        node.rate = node.fixedrate;
+                        node.status({fill:"blue",shape:"ring",text:0});
+                        done();
+                    }
                 }
             });
 
