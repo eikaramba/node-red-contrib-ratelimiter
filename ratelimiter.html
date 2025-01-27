@@ -294,11 +294,6 @@
                 }
             }).trigger("change");
 
-            $("#burst-help").tooltipster({
-                content: RED._("ratelimiter.tips.allowburst"),
-                position: 'right',
-                trigger: 'hover'
-            });
             $("#node-input-drop-select").on("change", function() {
                 if (this.value === "drop") {
                     $("#rate-burst-option").show();
@@ -322,7 +317,6 @@
                 }
                 var dropType = $("#node-input-drop-select").val();
                 this.drop = dropType !== "queue";
-                this.allowburst = dropType === "drop" && $("#node-input-allowburst").is(":checked");
                 $("#node-input-outputs").val(dropType === "emit"?2:1);
             }
         }

@@ -56,7 +56,7 @@ module.exports = function(RED) {
         this.lastSentTime = null;
         this.tokens = n.rate || 1;
         this.maxTokens = n.rate || 1;
-        this.allowBurst = n.allowBurst || false;
+        this.allowburst = n.allowburst || false;
 
         if (n.randomUnits === "milliseconds") {
             this.randomFirst = n.randomFirst * 1;
@@ -220,19 +220,30 @@ module.exports = function(RED) {
             node.on("input", function(msg, send, done) {
                 if (node.drop) {
                     const now = Date.now();
-                    // Store sent message timestamps in an array
+                    // Initialize tracking arrays and timestamps if not exists
                     if (!node.sentTimestamps) {
                         node.sentTimestamps = [];
                     }
+                    if (!node.lastSentTime) {
+                        node.lastSentTime = now;
+                    }
                 
-                    // Clean up old timestamps outside the rate window
-                    const windowStart = now - (node.rate * node.maxTokens);
+                    // Calculate the time window and clean up old timestamps
+                    const baseWindow = node.rate * node.maxTokens;
+                    const windowStart = now - baseWindow;
                     node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
                 
-                    // Check if we can send based on the number of messages in the current window
-                    const canSend = node.sentTimestamps.length < node.maxTokens || 
-                                    (node.allowBurst && node.lastSentTime && 
-                                     (now - node.lastSentTime) > (node.rate * node.maxTokens));
+                    let maxAllowedMessages = Number(node.maxTokens);
+                
+                    // Calculate burst capacity if enabled
+                    if (node.allowburst && node.lastSentTime) {
+                        const timeSinceLastMessage = now - node.lastSentTime;
+                        const additionalBurstCapacity = Math.floor(timeSinceLastMessage / baseWindow);
+                        maxAllowedMessages += additionalBurstCapacity;
+                    }
+                
+                    // Check if we can send based on the number of messages and burst capacity
+                    const canSend = node.sentTimestamps.length < maxAllowedMessages;
                 
                     if (canSend) {
                         // Send the message and record the timestamp
@@ -244,18 +255,33 @@ module.exports = function(RED) {
                         } else {
                             send(msg);
                         }
+                
+                        // Update status to show current message count and burst capacity
+                        const burstCapacity = maxAllowedMessages - node.maxTokens;
+                        node.status({
+                            fill: "green",
+                            shape: "dot",
+                            text: `msgs: ${node.sentTimestamps.length}/${maxAllowedMessages} (burst: +${burstCapacity})`
+                        });
                     } else {
                         // Message is dropped
                         node.droppedMsgs++;
                         if (node.outputs === 2) {
                             send([null, msg]);
                         }
+                
+                        // Update status to show drop
+                        node.status({
+                            fill: "red",
+                            shape: "ring",
+                            text: `dropped (limit: ${maxAllowedMessages})`
+                        });
                     }
                 
                     // Handle reset functionality
                     if (msg.hasOwnProperty("reset")) {
                         node.sentTimestamps = [];
-                        node.lastSentTime = null;
+                        node.lastSentTime = now;
                         node.rate = node.fixedrate;
                         node.status({fill:"blue",shape:"ring",text:"reset"});
                     }
