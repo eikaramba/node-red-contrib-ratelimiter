@@ -19,7 +19,7 @@ module.exports = function(RED) {
         return _maxKeptMsgsCount;
     }
 
-    function DelayNode(n) {
+    function RatelimiterNode(n) {
         RED.nodes.createNode(this,n);
 
         this.pauseType = n.pauseType;
@@ -368,5 +368,5 @@ module.exports = function(RED) {
             });
         }
     }
-    RED.nodes.registerType("ratelimiter",DelayNode);
+    RED.nodes.registerType("ratelimiter",RatelimiterNode);
 }

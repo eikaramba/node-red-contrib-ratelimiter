@@ -1,5 +1,5 @@
 {
-    "rate-limiterer": {
+    "ratelimiter": {
         "action": "Action",
         "for": "For",
         "delaymsg": "Delay each message",
@@ -33,7 +33,7 @@
             "allowburst": "When enabled, unused message slots accumulate over time. For example, with 1 msg/hour, after 4 hours of no messages, up to 4 messages can be sent immediately."
         },
         "label": {
-            "delay": "delay",
+            "ratelimiter": "ratelimiter",
             "variable": "variable",
             "limit": "limit",
             "limitTopic": "limit topic",
