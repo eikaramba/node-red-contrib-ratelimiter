@@ -220,39 +220,25 @@ module.exports = function(RED) {
             node.on("input", function(msg, send, done) {
                 if (node.drop) {
                     const now = Date.now();
-        
-                    if (node.lastSentTime === null) {
-                        // First message, initialize time and send immediately
+                    // Store sent message timestamps in an array
+                    if (!node.sentTimestamps) {
+                        node.sentTimestamps = [];
+                    }
+                
+                    // Clean up old timestamps outside the rate window
+                    const windowStart = now - (node.rate * node.maxTokens);
+                    node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
+                
+                    // Check if we can send based on the number of messages in the current window
+                    const canSend = node.sentTimestamps.length < node.maxTokens || 
+                                    (node.allowBurst && node.lastSentTime && 
+                                     (now - node.lastSentTime) > (node.rate * node.maxTokens));
+                
+                    if (canSend) {
+                        // Send the message and record the timestamp
+                        node.sentTimestamps.push(now);
                         node.lastSentTime = now;
-                        node.tokens = node.maxTokens - 1;
-                        if (node.outputs === 2) {
-                            send([msg, null]);
-                        } else {
-                            send(msg);
-                        }
-                        done();
-                        return;
-                    }
-
-                    // Calculate elapsed time and new tokens
-                    const elapsed = now - node.lastSentTime;
-                    const newTokens = elapsed / node.rate;
-
-                    // Update tokens (with burst control)
-                    if (newTokens > 0) {
-                        if (node.allowBurst) {
-                            node.tokens = Math.min(node.tokens + newTokens, node.maxTokens);
-                        } else {
-                            node.tokens = Math.min(1, node.tokens + newTokens);
-                        }
-
-                        // Only update lastSentTime when we actually add tokens
-                        node.lastSentTime = now - (elapsed % node.rate); // Keep remainder for accurate token accumulation
-                    }
-
-                    // Check if we can send the message
-                    if (node.tokens >= 1) {
-                        node.tokens -= 1;
+                
                         if (node.outputs === 2) {
                             send([msg, null]);
                         } else {
@@ -265,15 +251,15 @@ module.exports = function(RED) {
                             send([null, msg]);
                         }
                     }
-
+                
                     // Handle reset functionality
                     if (msg.hasOwnProperty("reset")) {
-                        node.tokens = node.maxTokens;
+                        node.sentTimestamps = [];
                         node.lastSentTime = null;
                         node.rate = node.fixedrate;
                         node.status({fill:"blue",shape:"ring",text:"reset"});
                     }
-        
+                
                     done();
                 } else {
                     // Original queuing behavior for when drop is false
