@@ -220,35 +220,54 @@ module.exports = function(RED) {
             node.on("input", function(msg, send, done) {
                 if (node.drop) {
                     const now = Date.now();
-                    // Initialize tracking arrays and timestamps if not exists
+                    // Initialize tracking arrays and state if not exists
                     if (!node.sentTimestamps) {
                         node.sentTimestamps = [];
                     }
                     if (!node.lastSentTime) {
                         node.lastSentTime = now;
                     }
-                
-                    // Calculate the time window and clean up old timestamps
-                    const baseWindow = node.rate * node.maxTokens;
-                    const windowStart = now - baseWindow;
-                    node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
-                
-                    let maxAllowedMessages = Number(node.maxTokens);
-                
-                    // Calculate burst capacity if enabled
-                    if (node.allowburst && node.lastSentTime) {
-                        const timeSinceLastMessage = now - node.lastSentTime;
-                        const additionalBurstCapacity = Math.floor(timeSinceLastMessage / baseWindow);
-                        maxAllowedMessages += additionalBurstCapacity;
+                    if (!node.burstCredits) {
+                        node.burstCredits = 0;
                     }
                 
-                    // Check if we can send based on the number of messages and burst capacity
-                    const canSend = node.sentTimestamps.length < maxAllowedMessages;
+                    // Calculate the base time window
+                    const baseWindow = node.rate * node.maxTokens;
+                    const windowStart = now - baseWindow;
+                
+                    // Update burst credits if burst mode is enabled
+                    if (node.allowburst && node.lastSentTime) {
+                        const timeSinceLastMessage = now - node.lastSentTime;
+                        const newBurstCredits = Math.floor(timeSinceLastMessage / baseWindow);
+                        if (newBurstCredits > 0) {
+                            node.burstCredits += newBurstCredits;
+                            // Update lastSentTime to not count this time period again
+                            node.lastSentTime = now - (timeSinceLastMessage % baseWindow);
+                        }
+                    }
+                
+                    // Clean up old timestamps and calculate current usage
+                    node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
+                    const currentWindowMessages = node.sentTimestamps.length;
+                
+                    // Calculate if we can send
+                    let canSend = false;
+                    if (currentWindowMessages < node.maxTokens) {
+                        // We're within normal rate limit
+                        canSend = true;
+                    } else if (node.allowburst && node.burstCredits > 0) {
+                        // We can use a burst credit
+                        canSend = true;
+                    }
                 
                     if (canSend) {
                         // Send the message and record the timestamp
                         node.sentTimestamps.push(now);
-                        node.lastSentTime = now;
+                
+                        // If we're using burst credits, decrease them
+                        if (currentWindowMessages >= node.maxTokens) {
+                            node.burstCredits--;
+                        }
                 
                         if (node.outputs === 2) {
                             send([msg, null]);
@@ -256,12 +275,11 @@ module.exports = function(RED) {
                             send(msg);
                         }
                 
-                        // Update status to show current message count and burst capacity
-                        const burstCapacity = maxAllowedMessages - node.maxTokens;
+                        // Update status to show current message count and burst credits
                         node.status({
                             fill: "green",
                             shape: "dot",
-                            text: `msgs: ${node.sentTimestamps.length}/${maxAllowedMessages} (burst: +${burstCapacity})`
+                            text: `msgs: ${node.sentTimestamps.length}/${node.maxTokens} (burst credits: ${node.burstCredits})`
                         });
                     } else {
                         // Message is dropped
@@ -274,7 +292,7 @@ module.exports = function(RED) {
                         node.status({
                             fill: "red",
                             shape: "ring",
-                            text: `dropped (limit: ${maxAllowedMessages})`
+                            text: `dropped (burst credits: ${node.burstCredits})`
                         });
                     }
                 
@@ -282,6 +300,7 @@ module.exports = function(RED) {
                     if (msg.hasOwnProperty("reset")) {
                         node.sentTimestamps = [];
                         node.lastSentTime = now;
+                        node.burstCredits = 0;
                         node.rate = node.fixedrate;
                         node.status({fill:"blue",shape:"ring",text:"reset"});
                     }
