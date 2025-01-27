@@ -1,6 +1,6 @@
 # @eikaramba/node-red-ratelimiter
 
-A modified version of the [official Node-RED delay node](https://flowfuse.com/node-red/core-nodes/delay/) that implements true rate limiting with immediate message processing.
+A modified version of the [official Node-RED delay node](https://flowfuse.com/node-red/core-nodes/delay/) that implements true rate limiting with immediate message processing. Delay option is completely removed, use the original node for that.
 
 ## Key Features
 

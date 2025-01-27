@@ -109,100 +109,147 @@ module.exports = function(RED) {
         node.on("close", function() { clearInterval(loggerId); });
 
 
-        node.on("input", function(msg, send, done) {
-            if (node.drop) {
-                const now = Date.now();
-                // Initialize tracking arrays and state if not exists
-                if (!node.sentTimestamps) {
-                    node.sentTimestamps = [];
+        this.topicTimestamps = new Map();
+    this.topicBurstCredits = new Map();
+    this.topicLastSentTime = new Map();
+
+    node.on("input", function(msg, send, done) {
+        if (node.drop) {
+            const now = Date.now();
+
+            // Initialize tracking arrays and state if not exists
+            if (node.pauseType === "rate" && !node.sentTimestamps) {
+                node.sentTimestamps = [];
+            }
+
+            let currentTimestamps;
+            let currentBurstCredits;
+            let currentLastSentTime;
+
+            if (node.pauseType === "topic") {
+                // Initialize per-topic tracking
+                if (!node.topicTimestamps.has(msg.topic)) {
+                    node.topicTimestamps.set(msg.topic, []);
+                    node.topicBurstCredits.set(msg.topic, 0);
+                    node.topicLastSentTime.set(msg.topic, now);
                 }
-                if (!node.lastSentTime) {
-                    node.lastSentTime = now;
-                }
-                if (!node.burstCredits) {
-                    node.burstCredits = 0;
-                }
-            
-                // Calculate the base time window
-                const baseWindow = node.rate * node.maxTokens;
-                const windowStart = now - baseWindow;
-            
-                // Update burst credits if burst mode is enabled
-                if (node.allowburst && node.lastSentTime) {
-                    const timeSinceLastMessage = now - node.lastSentTime;
-                    const newBurstCredits = Math.floor(timeSinceLastMessage / baseWindow);
-                    if (newBurstCredits > 0) {
-                        node.burstCredits += newBurstCredits;
-                        // Update lastSentTime to not count this time period again
-                        node.lastSentTime = now - (timeSinceLastMessage % baseWindow);
-                    }
-                }
-            
-                // Clean up old timestamps and calculate current usage
-                node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
-                const currentWindowMessages = node.sentTimestamps.length;
-            
-                // Calculate if we can send
-                let canSend = false;
-                if (currentWindowMessages < node.maxTokens) {
-                    // We're within normal rate limit
-                    canSend = true;
-                } else if (node.allowburst && node.burstCredits > 0) {
-                    // We can use a burst credit
-                    canSend = true;
-                }
-            
-                if (canSend) {
-                    // Send the message and record the timestamp
-                    node.sentTimestamps.push(now);
-            
-                    // If we're using burst credits, decrease them
-                    if (currentWindowMessages >= node.maxTokens) {
-                        node.burstCredits--;
-                    }
-            
-                    if (node.outputs === 2) {
-                        send([msg, null]);
-                    } else {
-                        send(msg);
-                    }
-            
-                    // Update status to show current message count and burst credits
-                    let statusText = `msgs: ${node.sentTimestamps.length}/${node.maxTokens}`;
-                    if(node.allowburst) statusText += ` (burst credits: ${node.burstCredits})`;
-                    
-                    node.status({
-                        fill: "green",
-                        shape: "dot",
-                        text: statusText
-                    });
-                } else {
-                    // Message is dropped
-                    node.droppedMsgs++;
-                    if (node.outputs === 2) {
-                        send([null, msg]);
-                    }
-            
-                    let dropStatusText = `dropped`;
-                    if(node.allowburst) dropStatusText += ` (burst credits: ${node.burstCredits})`;
-                    node.status({
-                        fill: "red",
-                        shape: "ring",
-                        text: dropStatusText
-                    });
-                }
-            
-                // Handle reset functionality
-                if (msg.hasOwnProperty("reset")) {
-                    node.sentTimestamps = [];
-                    node.lastSentTime = now;
-                    node.burstCredits = 0;
-                    node.rate = node.fixedrate;
-                    node.status({fill:"blue",shape:"ring",text:"reset"});
-                }
-            
-                done();
+                currentTimestamps = node.topicTimestamps.get(msg.topic);
+                currentBurstCredits = node.topicBurstCredits.get(msg.topic);
+                currentLastSentTime = node.topicLastSentTime.get(msg.topic);
             } else {
+                // Use global tracking
+                currentTimestamps = node.sentTimestamps;
+                currentBurstCredits = node.burstCredits;
+                currentLastSentTime = node.lastSentTime;
+            }
+
+            // Calculate the base time window
+            const baseWindow = node.rate * node.maxTokens;
+            const windowStart = now - baseWindow;
+
+            // Update burst credits if burst mode is enabled
+            if (node.allowburst && currentLastSentTime) {
+                const timeSinceLastMessage = now - currentLastSentTime;
+                const newBurstCredits = Math.floor(timeSinceLastMessage / baseWindow);
+                if (newBurstCredits > 0) {
+                    currentBurstCredits += newBurstCredits;
+                    currentLastSentTime = now - (timeSinceLastMessage % baseWindow);
+
+                    if (node.pauseType === "topic") {
+                        node.topicBurstCredits.set(msg.topic, currentBurstCredits);
+                        node.topicLastSentTime.set(msg.topic, currentLastSentTime);
+                    } else {
+                        node.burstCredits = currentBurstCredits;
+                        node.lastSentTime = currentLastSentTime;
+                    }
+                }
+            }
+
+            // Clean up old timestamps and calculate current usage
+            currentTimestamps = currentTimestamps.filter(ts => ts > windowStart);
+            const currentWindowMessages = currentTimestamps.length;
+
+            // Update filtered timestamps
+            if (node.pauseType === "topic") {
+                node.topicTimestamps.set(msg.topic, currentTimestamps);
+            } else {
+                node.sentTimestamps = currentTimestamps;
+            }
+
+            // Calculate if we can send
+            let canSend = false;
+            if (currentWindowMessages < node.maxTokens) {
+                canSend = true;
+            } else if (node.allowburst && currentBurstCredits > 0) {
+                canSend = true;
+            }
+
+            if (canSend) {
+                // Send the message and record the timestamp
+                currentTimestamps.push(now);
+
+                if (node.pauseType === "topic") {
+                    node.topicTimestamps.set(msg.topic, currentTimestamps);
+                }
+
+                // If we're using burst credits, decrease them
+                if (currentWindowMessages >= node.maxTokens) {
+                    currentBurstCredits--;
+                    if (node.pauseType === "topic") {
+                        node.topicBurstCredits.set(msg.topic, currentBurstCredits);
+                    } else {
+                        node.burstCredits = currentBurstCredits;
+                    }
+                }
+
+                if (node.outputs === 2) {
+                    send([msg, null]);
+                } else {
+                    send(msg);
+                }
+
+                // Update status to show current message count and burst credits
+                let statusText = `${msg.topic}: ${currentTimestamps.length}/${node.maxTokens}`;
+                if(node.allowburst) statusText += ` (burst: ${currentBurstCredits})`;
+
+                node.status({
+                    fill: "green",
+                    shape: "dot",
+                    text: statusText
+                });
+            } else {
+                // Message is dropped
+                node.droppedMsgs++;
+                if (node.outputs === 2) {
+                    send([null, msg]);
+                }
+
+                let dropStatusText = `${msg.topic}: dropped`;
+                if(node.allowburst) dropStatusText += ` (burst: ${currentBurstCredits})`;
+                node.status({
+                    fill: "red",
+                    shape: "ring",
+                    text: dropStatusText
+                });
+            }
+
+            // Handle reset functionality
+            if (msg.hasOwnProperty("reset")) {
+                if (node.pauseType === "topic") {
+                    node.topicTimestamps.clear();
+                    node.topicBurstCredits.clear();
+                    node.topicLastSentTime.clear();
+                } else {
+                    node.sentTimestamps = [];
+                    node.lastSentTime = now;
+                    node.burstCredits = 0;
+                }
+                node.rate = node.fixedrate;
+                node.status({fill:"blue",shape:"ring",text:"reset"});
+            }
+
+            done();
+        } else {
                 // Original queuing behavior for when drop is false
                 if (!msg.hasOwnProperty("reset")) {
                     var m = RED.util.cloneMessage(msg);
