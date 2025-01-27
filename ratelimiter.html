@@ -1,47 +1,4 @@
 <script type="text/html" data-template-name="ratelimiter">
-    <div class="form-row">
-        <label for="node-input-delay-action"><i class="fa fa-tasks"></i> <span data-i18n="ratelimiter.action"></span></label>
-        <select id="node-input-delay-action" style="width:270px !important">
-            <option value="delay" data-i18n="ratelimiter.delaymsg"></option>
-            <option value="rate" data-i18n="ratelimiter.limitrate"></option>
-        </select>
-    </div>
-
-    <div id="delay-details">
-        <div class="form-row">
-            <label></label>
-            <select id="node-input-delay-type" style="width:270px !important">
-                <option value="delay" data-i18n="ratelimiter.delayfixed"></option>
-                <option value="random" data-i18n="ratelimiter.randomdelay"></option>
-                <option value="delayv" data-i18n="ratelimiter.delayvarmsg"></option>
-            </select>
-        </div>
-        <div class="form-row" id="delay-details-for">
-            <label for="node-input-timeout"><i class="fa fa-clock-o"></i> <span data-i18n="ratelimiter.for"></span></label>
-            <input type="text" id="node-input-timeout" style="text-align:end; width:50px !important">
-            <select id="node-input-timeoutUnits" style="width:200px !important">
-              <option value="milliseconds" data-i18n="ratelimiter.milisecs"></option>
-              <option value="seconds" data-i18n="ratelimiter.secs"></option>
-              <option value="minutes" data-i18n="ratelimiter.mins"></option>
-              <option value="hours" data-i18n="ratelimiter.hours"></option>
-              <option value="days" data-i18n="ratelimiter.days"></option>
-            </select>
-        </div>
-        <div id="random-details" class="form-row">
-            <label for="node-input-randomFirst"><i class="fa fa-clock-o"></i> <span data-i18n="ratelimiter.between"></span></label>
-            <input type="text" id="node-input-randomFirst" placeholder="" style="text-align:end; width:50px !important">
-            &nbsp;<span data-i18n="ratelimiter.and"></span>&nbsp;
-            <input type="text" id="node-input-randomLast" placeholder="" style="text-align:end; width:50px !important">
-            <select id="node-input-randomUnits" style="width:140px !important">
-              <option value="milliseconds" data-i18n="ratelimiter.milisecs"></option>
-              <option value="seconds" data-i18n="ratelimiter.secs"></option>
-              <option value="minutes" data-i18n="ratelimiter.mins"></option>
-              <option value="hours" data-i18n="ratelimiter.hours"></option>
-              <option value="days" data-i18n="ratelimiter.days"></option>
-            </select>
-        </div>
-    </div>
-
     <div id="rate-details">
         <div class="form-row">
             <label></label>
@@ -99,7 +56,7 @@
         color:"#E6E0F8",
         defaults: {
             name: {value:""},
-            pauseType: {value:"delay", required:true},
+            pauseType: {value:"rate", required:true},
             timeout: {
                 value:"5", required:true,
                 label:RED._("node-red:ratelimiter.label.delay"),
@@ -132,23 +89,6 @@
                 }
             },
             rateUnits: {value: "second"},
-            randomFirst: {
-                value:"1", required:true,
-                validate:function(v,opt) {
-                    if (RED.validators.number(v) && (v >= 0)) {
-                        return true;
-                    }
-                    return RED._("node-red:ratelimiter.errors.invalid-random-first");
-                }},
-            randomLast: {
-                value:"5", required:true,
-                validate:function(v,opt) {
-                    if (RED.validators.number(v) && (v >= 0)) {
-                        return true;
-                    }
-                    return RED._("node-red:ratelimiter.errors.invalid-random-last");
-                }},
-            randomUnits: {value: "seconds"},
             drop: {value:false},
             allowrate: {value:false},
             outputs: { value: 1},
@@ -161,23 +101,14 @@
             if (this.name) {
                 return this.name;
             }
-            if (this.pauseType == "delayv") {
-                return this._("ratelimiter.label.variable");
-            } else if (this.pauseType == "delay") {
-                var units = this.timeoutUnits ? this.timeoutUnits.charAt(0) : "s";
-                if (this.timeoutUnits == "milliseconds") { units = "ms"; }
-                return this._("ratelimiter.label.delay")+" "+this.timeout+units;
-            } else if (this.pauseType == "random") {
-                return this._("ratelimiter.label.random");
+            
+            var rate = this.rate+" msg/"+(this.rateUnits ? (this.nbRateUnits > 1 ? this.nbRateUnits : '') + this.rateUnits.charAt(0) : "s");
+            if (this.pauseType == "rate") {
+                return this._("ratelimiter.label.limit")+" "+rate;
+            } else if (this.pauseType == "timed") {
+                return this._("ratelimiter.label.limitTopic")+" "+rate;
             } else {
-                var rate = this.rate+" msg/"+(this.rateUnits ? (this.nbRateUnits > 1 ? this.nbRateUnits : '') + this.rateUnits.charAt(0) : "s");
-                if (this.pauseType == "rate") {
-                    return this._("ratelimiter.label.limit")+" "+rate;
-                } else if (this.pauseType == "timed") {
-                    return this._("ratelimiter.label.limitTopic")+" "+rate;
-                } else {
-                    return this._("ratelimiter.label.limitTopic")+" "+rate;
-                }
+                return this._("ratelimiter.label.limitTopic")+" "+rate;
             }
         },
         labelStyle: function() {
@@ -188,9 +119,6 @@
             $( "#node-input-timeout" ).spinner({min:1});
             $( "#node-input-rate" ).spinner({min:1});
             $( "#node-input-nbRateUnits" ).spinner({min:1});
-
-            $( "#node-input-randomFirst" ).spinner({min:0});
-            $( "#node-input-randomLast" ).spinner({min:1});
 
             $('.ui-spinner-button').on("click", function() {
                 $(this).siblings('input').trigger("change");
@@ -215,28 +143,6 @@
                 });
             });
 
-            if (this.pauseType == "delay") {
-                $("#node-input-delay-action").val('delay');
-                $("#node-input-delay-type").val('delay');
-            } else if (this.pauseType == "delayv") {
-                $("#node-input-delay-action").val('delay');
-                $("#node-input-delay-type").val('delayv');
-            } else if (this.pauseType == "random") {
-                $("#node-input-delay-action").val('delay');
-                $("#node-input-delay-type").val('random');
-            } else if (this.pauseType == "rate") {
-                $("#node-input-delay-action").val('rate');
-                $("#node-input-rate-type").val('all');
-            } else if (this.pauseType == "queue") {
-                $("#node-input-delay-action").val('rate');
-                $("#node-input-rate-type").val('topic');
-                $("#node-input-rate-topic-type").val('queue');
-            } else if (this.pauseType == "timed") {
-                $("#node-input-delay-action").val('rate');
-                $("#node-input-rate-type").val('topic');
-                $("#node-input-rate-topic-type").val('timed');
-            }
-
             if (!this.timeoutUnits) {
                 $("#node-input-timeoutUnits option").filter(function() {
                     return $(this).val() == 'seconds';
@@ -248,29 +154,6 @@
                     return $(this).val() == 'seconds';
                 }).attr('selected', true);
             }
-
-            $("#node-input-delay-action").on("change",function() {
-                if (this.value === "delay") {
-                    $("#delay-details").show();
-                    $("#rate-details").hide();
-                } else if (this.value === "rate") {
-                    $("#delay-details").hide();
-                    $("#rate-details").show();
-                }
-            }).trigger("change");
-
-            $("#node-input-delay-type").on("change", function() {
-                if (this.value === "delay") {
-                    $("#delay-details-for").show();
-                    $("#random-details").hide();
-                } else if (this.value === "delayv") {
-                    $("#delay-details-for").show();
-                    $("#random-details").hide();
-                } else if (this.value === "random") {
-                    $("#delay-details-for").hide();
-                    $("#random-details").show();
-                }
-            }).trigger("change");
 
             if (this.outputs === 2) {
                 $("#node-input-drop-select").val("emit");
@@ -303,21 +186,15 @@
             }).trigger("change");
         },
         oneditsave: function() {
-            var action = $("#node-input-delay-action").val();
-            if (action === "delay") {
-                this.pauseType = $("#node-input-delay-type").val();
-                $("#node-input-outputs").val(1);
-            } else if (action === "rate") {
-                action = $("#node-input-rate-type").val();
-                if (action === "all") {
-                    this.pauseType = "rate";
-                } else {
-                    this.pauseType = $("#node-input-rate-topic-type").val();
-                }
-                var dropType = $("#node-input-drop-select").val();
-                this.drop = dropType !== "queue";
-                $("#node-input-outputs").val(dropType === "emit"?2:1);
+            action = $("#node-input-rate-type").val();
+            if (action === "all") {
+                this.pauseType = "rate";
+            } else {
+                this.pauseType = "topic";
             }
+            var dropType = $("#node-input-drop-select").val();
+            this.drop = dropType !== "queue";
+            $("#node-input-outputs").val(dropType === "emit"?2:1);
         }
     });
 </script>

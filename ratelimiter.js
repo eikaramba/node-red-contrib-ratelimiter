@@ -2,8 +2,6 @@
 module.exports = function(RED) {
     "use strict";
 
-    var MILLIS_TO_NANOS = 1000000;
-    var SECONDS_TO_NANOS = 1000000000;
     var _maxKeptMsgsCount;
 
     function maxKeptMsgsCount(node) {
@@ -24,7 +22,6 @@ module.exports = function(RED) {
 
         this.pauseType = n.pauseType;
         this.timeoutUnits = n.timeoutUnits;
-        this.randomUnits = n.randomUnits;
         this.rateUnits = n.rateUnits;
 
 
@@ -58,29 +55,11 @@ module.exports = function(RED) {
         this.maxTokens = n.rate || 1;
         this.allowburst = n.allowburst || false;
 
-        if (n.randomUnits === "milliseconds") {
-            this.randomFirst = n.randomFirst * 1;
-            this.randomLast = n.randomLast * 1;
-        } else if (n.randomUnits === "minutes") {
-            this.randomFirst = n.randomFirst * (60 * 1000);
-            this.randomLast = n.randomLast * (60 * 1000);
-        } else if (n.randomUnits === "hours") {
-            this.randomFirst = n.randomFirst * (60 * 60 * 1000);
-            this.randomLast = n.randomLast * (60 * 60 * 1000);
-        } else if (n.randomUnits === "days") {
-            this.randomFirst = n.randomFirst * (24 * 60 * 60 * 1000);
-            this.randomLast = n.randomLast * (24 * 60 * 60 * 1000);
-        } else {  // Default to seconds
-            this.randomFirst = n.randomFirst * 1000;
-            this.randomLast = n.randomLast * 1000;
-        }
-
         this.diff = this.randomLast - this.randomFirst;
         this.name = n.name;
         this.idList = [];
         this.buffer = [];
         this.intervalID = -1;
-        this.randomID = -1;
         this.lastSent = null;
         this.drop = n.drop;
         this.droppedMsgs = 0;
@@ -112,26 +91,9 @@ module.exports = function(RED) {
             node.reportDepth();
         }
 
-        var clearDelayList = function(s) {
-            var len = node.idList.length;
-            for (var i=0; i<len; i++ ) { node.idList[i].clear(); }
-            node.idList = [];
-            if (s) { node.status({fill:"blue",shape:"ring",text:0}); }
-            else { node.status({}); }
-        }
-
-        var flushDelayList = function(n) {
-            var len = node.idList.length;
-            if (typeof(n) == 'number') { len = Math.min(Math.floor(n),len); }
-            for (var i=0; i<len; i++ ) { node.idList[0].trigger(); }
-            node.status({fill:"blue",shape:"dot",text:node.idList.length});
-        }
-
         node.reportDepth = function() {
             if (!node.busy) {
                 node.busy = setTimeout(function() {
-                    // if (node.buffer.length > 0) { node.status({text:node.buffer.length}); }
-                    // else { node.status({}); }
                     node.status({fill:"blue",shape:"dot",text:node.buffer.length});
                     node.busy = null;
                 }, 500);
@@ -146,338 +108,187 @@ module.exports = function(RED) {
         }, 15 * 1000);
         node.on("close", function() { clearInterval(loggerId); });
 
-        // The delay type modes
-        if (node.pauseType === "delay") {
-            node.on("input", function(msg, send, done) {
-                var id = ourTimeout(function() {
-                    node.idList.splice(node.idList.indexOf(id),1);
-                    if (node.timeout > 1000) {
-                        node.status({fill:"blue",shape:"dot",text:node.idList.length});
-                    }
-                    send(msg);
-                    done();
-                }, node.timeout, () => done());
-                if (Object.keys(msg).length === 2 && msg.hasOwnProperty("flush")) { id.clear(); }
-                else { node.idList.push(id); }
-                if (msg.hasOwnProperty("reset")) { clearDelayList(true); }
-                else if (msg.hasOwnProperty("flush")) { flushDelayList(msg.flush); done(); }
-                else if (node.timeout > 1000) {
-                    node.status({fill:"blue",shape:"dot",text:node.idList.length});
-                }
-            });
-            node.on("close", function() { clearDelayList(); });
-        }
-        else if (node.pauseType === "delayv") {
-            node.on("input", function(msg, send, done) {
-                var delayvar = Number(node.timeout);
-                if (msg.hasOwnProperty("delay") && !isNaN(parseFloat(msg.delay))) {
-                    delayvar = parseFloat(msg.delay);
-                }
-                if (delayvar < 0) { delayvar = 0; }
-                var id = ourTimeout(function() {
-                    node.idList.splice(node.idList.indexOf(id),1);
-                    if (node.idList.length === 0) { node.status({}); }
-                    send(msg);
-                    if (delayvar >= 0) {
-                        node.status({fill:"blue",shape:"dot",text:node.idList.length});
-                    }
-                    done();
-                }, delayvar, () => done());
-                node.idList.push(id);
-                if (msg.hasOwnProperty("reset")) { clearDelayList(true); }
-                if (msg.hasOwnProperty("flush")) { flushDelayList(msg.flush); done(); }
-                if (delayvar >= 0) {
-                    node.status({fill:"blue",shape:"dot",text:node.idList.length});
-                }
-            });
-            node.on("close", function() { clearDelayList(); });
-        }
 
-        else if (node.pauseType === "random") {
-            node.on("input", function(msg, send, done) {
-                var wait = node.randomFirst + (node.diff * Math.random());
-                var id = ourTimeout(function() {
-                    node.idList.splice(node.idList.indexOf(id),1);
-                    send(msg);
-                    if (node.timeout >= 1000) {
-                        node.status({fill:"blue",shape:"dot",text:node.idList.length});
-                    }
-                    done();
-                }, wait, () => done());
-                if (Object.keys(msg).length === 2 && msg.hasOwnProperty("flush")) { id.clear(); }
-                else { node.idList.push(id); }
-                if (msg.hasOwnProperty("reset")) { clearDelayList(true); }
-                if (msg.hasOwnProperty("flush")) { flushDelayList(msg.flush); done(); }
-                if (node.timeout >= 1000) {
-                    node.status({fill:"blue",shape:"dot",text:node.idList.length});
+        node.on("input", function(msg, send, done) {
+            if (node.drop) {
+                const now = Date.now();
+                // Initialize tracking arrays and state if not exists
+                if (!node.sentTimestamps) {
+                    node.sentTimestamps = [];
                 }
-            });
-            node.on("close", function() { clearDelayList(); });
-        }
-
-        // The rate limit/queue type modes
-        if (node.pauseType === "rate") {
-            node.on("input", function(msg, send, done) {
-                if (node.drop) {
-                    const now = Date.now();
-                    // Initialize tracking arrays and state if not exists
-                    if (!node.sentTimestamps) {
-                        node.sentTimestamps = [];
+                if (!node.lastSentTime) {
+                    node.lastSentTime = now;
+                }
+                if (!node.burstCredits) {
+                    node.burstCredits = 0;
+                }
+            
+                // Calculate the base time window
+                const baseWindow = node.rate * node.maxTokens;
+                const windowStart = now - baseWindow;
+            
+                // Update burst credits if burst mode is enabled
+                if (node.allowburst && node.lastSentTime) {
+                    const timeSinceLastMessage = now - node.lastSentTime;
+                    const newBurstCredits = Math.floor(timeSinceLastMessage / baseWindow);
+                    if (newBurstCredits > 0) {
+                        node.burstCredits += newBurstCredits;
+                        // Update lastSentTime to not count this time period again
+                        node.lastSentTime = now - (timeSinceLastMessage % baseWindow);
                     }
-                    if (!node.lastSentTime) {
-                        node.lastSentTime = now;
+                }
+            
+                // Clean up old timestamps and calculate current usage
+                node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
+                const currentWindowMessages = node.sentTimestamps.length;
+            
+                // Calculate if we can send
+                let canSend = false;
+                if (currentWindowMessages < node.maxTokens) {
+                    // We're within normal rate limit
+                    canSend = true;
+                } else if (node.allowburst && node.burstCredits > 0) {
+                    // We can use a burst credit
+                    canSend = true;
+                }
+            
+                if (canSend) {
+                    // Send the message and record the timestamp
+                    node.sentTimestamps.push(now);
+            
+                    // If we're using burst credits, decrease them
+                    if (currentWindowMessages >= node.maxTokens) {
+                        node.burstCredits--;
                     }
-                    if (!node.burstCredits) {
-                        node.burstCredits = 0;
-                    }
-                
-                    // Calculate the base time window
-                    const baseWindow = node.rate * node.maxTokens;
-                    const windowStart = now - baseWindow;
-                
-                    // Update burst credits if burst mode is enabled
-                    if (node.allowburst && node.lastSentTime) {
-                        const timeSinceLastMessage = now - node.lastSentTime;
-                        const newBurstCredits = Math.floor(timeSinceLastMessage / baseWindow);
-                        if (newBurstCredits > 0) {
-                            node.burstCredits += newBurstCredits;
-                            // Update lastSentTime to not count this time period again
-                            node.lastSentTime = now - (timeSinceLastMessage % baseWindow);
-                        }
-                    }
-                
-                    // Clean up old timestamps and calculate current usage
-                    node.sentTimestamps = node.sentTimestamps.filter(ts => ts > windowStart);
-                    const currentWindowMessages = node.sentTimestamps.length;
-                
-                    // Calculate if we can send
-                    let canSend = false;
-                    if (currentWindowMessages < node.maxTokens) {
-                        // We're within normal rate limit
-                        canSend = true;
-                    } else if (node.allowburst && node.burstCredits > 0) {
-                        // We can use a burst credit
-                        canSend = true;
-                    }
-                
-                    if (canSend) {
-                        // Send the message and record the timestamp
-                        node.sentTimestamps.push(now);
-                
-                        // If we're using burst credits, decrease them
-                        if (currentWindowMessages >= node.maxTokens) {
-                            node.burstCredits--;
-                        }
-                
-                        if (node.outputs === 2) {
-                            send([msg, null]);
-                        } else {
-                            send(msg);
-                        }
-                
-                        // Update status to show current message count and burst credits
-                        let statusText = `msgs: ${node.sentTimestamps.length}/${node.maxTokens}`;
-                        if(node.allowburst) statusText += ` (burst credits: ${node.burstCredits})`;
-                        
-                        node.status({
-                            fill: "green",
-                            shape: "dot",
-                            text: statusText
-                        });
+            
+                    if (node.outputs === 2) {
+                        send([msg, null]);
                     } else {
-                        // Message is dropped
-                        node.droppedMsgs++;
-                        if (node.outputs === 2) {
-                            send([null, msg]);
-                        }
-                
-                        let dropStatusText = `dropped`;
-                        if(node.allowburst) dropStatusText += ` (burst credits: ${node.burstCredits})`;
-                        node.status({
-                            fill: "red",
-                            shape: "ring",
-                            text: dropStatusText
-                        });
+                        send(msg);
                     }
-                
-                    // Handle reset functionality
-                    if (msg.hasOwnProperty("reset")) {
-                        node.sentTimestamps = [];
-                        node.lastSentTime = now;
-                        node.burstCredits = 0;
-                        node.rate = node.fixedrate;
-                        node.status({fill:"blue",shape:"ring",text:"reset"});
-                    }
-                
-                    done();
+            
+                    // Update status to show current message count and burst credits
+                    let statusText = `msgs: ${node.sentTimestamps.length}/${node.maxTokens}`;
+                    if(node.allowburst) statusText += ` (burst credits: ${node.burstCredits})`;
+                    
+                    node.status({
+                        fill: "green",
+                        shape: "dot",
+                        text: statusText
+                    });
                 } else {
-                    // Original queuing behavior for when drop is false
-                    if (!msg.hasOwnProperty("reset")) {
-                        var m = RED.util.cloneMessage(msg);
-                        delete m.flush;
-                        if (Object.keys(m).length > 1) {
-                            if (node.intervalID !== -1) {
-                                if (node.allowrate && m.hasOwnProperty("rate") && !isNaN(parseFloat(m.rate)) && node.rate !== m.rate) {
-                                    node.rate = m.rate;
-                                    clearInterval(node.intervalID);
-                                    node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
-                                }
-                                var max_msgs = maxKeptMsgsCount(node);
-                                if ((max_msgs > 0) && (node.buffer.length >= max_msgs)) {
-                                    node.buffer = [];
-                                    node.error(RED._("delay.errors.too-many"), m);
-                                } else if (msg.toFront === true) {
-                                    node.buffer.unshift({msg: m, send: send, done: done});
-                                    node.reportDepth();
-                                } else {
-                                    node.buffer.push({msg: m, send: send, done: done});
-                                    node.reportDepth();
-                                }
-                            }
-                            else {
-                                if (node.allowrate && m.hasOwnProperty("rate") && !isNaN(parseFloat(m.rate))) {
-                                    node.rate = m.rate;
-                                }
-                                send(m);
-                                node.reportDepth();
+                    // Message is dropped
+                    node.droppedMsgs++;
+                    if (node.outputs === 2) {
+                        send([null, msg]);
+                    }
+            
+                    let dropStatusText = `dropped`;
+                    if(node.allowburst) dropStatusText += ` (burst credits: ${node.burstCredits})`;
+                    node.status({
+                        fill: "red",
+                        shape: "ring",
+                        text: dropStatusText
+                    });
+                }
+            
+                // Handle reset functionality
+                if (msg.hasOwnProperty("reset")) {
+                    node.sentTimestamps = [];
+                    node.lastSentTime = now;
+                    node.burstCredits = 0;
+                    node.rate = node.fixedrate;
+                    node.status({fill:"blue",shape:"ring",text:"reset"});
+                }
+            
+                done();
+            } else {
+                // Original queuing behavior for when drop is false
+                if (!msg.hasOwnProperty("reset")) {
+                    var m = RED.util.cloneMessage(msg);
+                    delete m.flush;
+                    if (Object.keys(m).length > 1) {
+                        if (node.intervalID !== -1) {
+                            if (node.allowrate && m.hasOwnProperty("rate") && !isNaN(parseFloat(m.rate)) && node.rate !== m.rate) {
+                                node.rate = m.rate;
+                                clearInterval(node.intervalID);
                                 node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
-                                done();
                             }
+                            var max_msgs = maxKeptMsgsCount(node);
+                            if ((max_msgs > 0) && (node.buffer.length >= max_msgs)) {
+                                node.buffer = [];
+                                node.error(RED._("delay.errors.too-many"), m);
+                            } else if (msg.toFront === true) {
+                                node.buffer.unshift({msg: m, send: send, done: done});
+                                node.reportDepth();
+                            } else {
+                                node.buffer.push({msg: m, send: send, done: done});
+                                node.reportDepth();
+                            }
+                        }
+                        else {
+                            if (node.allowrate && m.hasOwnProperty("rate") && !isNaN(parseFloat(m.rate))) {
+                                node.rate = m.rate;
+                            }
+                            send(m);
+                            node.reportDepth();
+                            node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
+                            done();
                         }
                     }
-        
-                    if (msg.hasOwnProperty("flush")) {
-                        var len = node.buffer.length;
-                        if (typeof(msg.flush) == 'number') { 
-                            len = Math.min(Math.floor(msg.flush), len); 
+                }
+    
+                if (msg.hasOwnProperty("flush")) {
+                    var len = node.buffer.length;
+                    if (typeof(msg.flush) == 'number') { 
+                        len = Math.min(Math.floor(msg.flush), len); 
+                    }
+                    if (len === 0) {
+                        clearInterval(node.intervalID);
+                        node.intervalID = -1;
+                    }
+                    else {
+                        while (len > 0) {
+                            const msgInfo = node.buffer.shift();
+                            delete msgInfo.msg.flush;
+                            delete msgInfo.msg.reset;
+                            if (Object.keys(msgInfo.msg).length > 1) {
+                                send(msgInfo.msg);
+                                msgInfo.done();
+                            }
+                            len = len - 1;
                         }
-                        if (len === 0) {
+                        clearInterval(node.intervalID);
+                        node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
+                    }
+                    node.status({fill:"blue",shape:"dot",text:node.buffer.length});
+                    done();
+                }
+    
+                if (msg.hasOwnProperty("reset")) {
+                    if (msg.flush === undefined) {
+                        if (node.intervalID !== -1) {
                             clearInterval(node.intervalID);
                             node.intervalID = -1;
                         }
-                        else {
-                            while (len > 0) {
-                                const msgInfo = node.buffer.shift();
-                                delete msgInfo.msg.flush;
-                                delete msgInfo.msg.reset;
-                                if (Object.keys(msgInfo.msg).length > 1) {
-                                    send(msgInfo.msg);
-                                    msgInfo.done();
-                                }
-                                len = len - 1;
-                            }
-                            clearInterval(node.intervalID);
-                            node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
-                        }
-                        node.status({fill:"blue",shape:"dot",text:node.buffer.length});
-                        done();
-                    }
-        
-                    if (msg.hasOwnProperty("reset")) {
-                        if (msg.flush === undefined) {
-                            if (node.intervalID !== -1) {
-                                clearInterval(node.intervalID);
-                                node.intervalID = -1;
-                            }
-                        }
-                        node.buffer = [];
-                        node.rate = node.fixedrate;
-                        node.status({fill:"blue",shape:"ring",text:0});
-                        done();
-                    }
-                }
-            });
-
-            node.on("close", function() {
-                clearInterval(node.intervalID);
-                clearTimeout(node.busy);
-                node.buffer.forEach((msgInfo) => msgInfo.done());
-                node.buffer = [];
-                node.status({});
-                node.lastSentTime = null;
-                node.tokens = node.maxTokens;
-            });
-        }
-
-        // The topic based fair queue and last arrived on all topics queue
-        else if ((node.pauseType === "queue") || (node.pauseType === "timed")) {
-            node.intervalID = setInterval(function() {
-                if (node.pauseType === "queue") {
-                    if (node.buffer.length > 0) {
-                        const msgInfo = node.buffer.shift();
-                        msgInfo.send(msgInfo.msg); // send the first on the queue
-                        msgInfo.done();
-                    }
-                }
-                else {
-                    while (node.buffer.length > 0) {    // send the whole queue
-                        const msgInfo = node.buffer.shift();
-                        msgInfo.send(msgInfo.msg);
-                        msgInfo.done();
-                    }
-                }
-                node.reportDepth();
-            },node.rate);
-
-            var hit;
-            node.on("input", function(msg, send, done) {
-                if (node.allowrate && msg.hasOwnProperty("rate") && !isNaN(parseFloat(msg.rate)) && node.rate !== msg.rate) {
-                    node.rate = msg.rate;
-                    clearInterval(node.intervalID);
-                    node.intervalID = setInterval(sendMsgFromBuffer, node.rate);
-                }
-                if (!msg.hasOwnProperty("topic")) { msg.topic = "_none_"; }
-                hit = false;
-                for (var b in node.buffer) { // check if already in queue
-                    if (msg.topic === node.buffer[b].msg.topic) {
-                        if (node.outputs === 2) { send([null,node.buffer[b].msg]) }
-                        node.buffer[b].done();
-                        node.buffer[b] = {msg, send, done}; // if so - replace existing entry
-                        hit = true;
-                        break;
-                    }
-                }
-                if (!hit) {
-                    node.buffer.push({msg, send, done}); // if not add to end of queue
-                    node.reportDepth();
-                }
-                if (msg.hasOwnProperty("flush")) {
-                    var len = node.buffer.length;
-                    if (typeof(msg.flush) == 'number') { len = Math.min(Math.floor(msg.flush,len)); }
-                    while (len > 0) {
-                        const msgInfo = node.buffer.shift();
-                        delete msgInfo.msg.flush;
-                        delete msgInfo.msg.reset;
-                        if (Object.keys(msgInfo.msg).length > 2) {
-                            node.send(msgInfo.msg);
-                            msgInfo.done();
-                        }
-                        len = len - 1;
-                    }
-                    node.status({});
-                    done();
-                }
-                if (msg.hasOwnProperty("reset")) {
-                    while (node.buffer.length > 0) {
-                        const msgInfo = node.buffer.shift();
-                        msgInfo.done();
                     }
                     node.buffer = [];
                     node.rate = node.fixedrate;
-                    node.status({text:"reset"});
+                    node.status({fill:"blue",shape:"ring",text:0});
                     done();
                 }
-            });
-            node.on("close", function() {
-                clearInterval(node.intervalID);
-                while (node.buffer.length > 0) {
-                    const msgInfo = node.buffer.shift();
-                    msgInfo.done();
-                }
-                node.buffer = [];
-                node.status({});
-            });
-        }
+            }
+        });
+
+        node.on("close", function() {
+            clearInterval(node.intervalID);
+            clearTimeout(node.busy);
+            node.buffer.forEach((msgInfo) => msgInfo.done());
+            node.buffer = [];
+            node.status({});
+            node.lastSentTime = null;
+            node.tokens = node.maxTokens;
+        });
     }
     RED.nodes.registerType("ratelimiter",RatelimiterNode);
 }
