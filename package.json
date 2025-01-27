@@ -1,0 +1,38 @@
+{
+  "name": "@eikaramba/node-red-ratelimiter",
+  "version": "1.0.0",
+  "description": "official delay node changed so that messages are dropped and not queued",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eikaramba/node-red-contrib-ratelimiter.git"
+  },
+  "keywords": [
+    "node-red",
+    "ratelimit",
+    "ratelimit",
+    "rate limit",
+    "rate",
+    "delay",
+    "queueing",
+    "burst",
+  ],
+  "author": "eikaramba",
+  "bugs": {
+    "url": "https://github.com/eikaramba/node-red-contrib-ratelimiter/issues"
+  },
+  "homepage": "https://github.com/eikaramba/node-red-contrib-ratelimiter#readme",
+  "node-red": {
+    "version": ">=3.0.0",
+    "nodes": {
+      "rate-limit": "ratelimiter.js"
+    }
+  },
+  "engines": {
+    "node": ">=12.22.2",
+    "npm": ">=6.14.13"
+  },
+  "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  }
+}
