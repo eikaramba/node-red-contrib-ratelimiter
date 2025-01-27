@@ -65,6 +65,12 @@
         <div class="form-row" id="rate-override" style="display: flex; align-items: center">
             <label></label><input style="width:30px; margin:0" type="checkbox" id="node-input-allowrate"><label style="margin:0;width: auto;" for="node-input-allowrate" data-i18n="delay.allowrate"></label>
         </div>
+        <div class="form-row" id="rate-burst-option" style="display: flex; align-items: center">
+            <label></label>
+            <input style="width:30px; margin:0" type="checkbox" id="node-input-allowburst">
+            <label style="margin:0;width: auto;" for="node-input-allowburst" data-i18n="delay.allowburst"></label>
+            <i class="fa fa-question-circle" id="burst-help"></i>
+        </div>
         <div class="form-row" id="rate-details-drop">
             <input type="hidden" id="node-input-outputs" value="1">
             <label></label>
@@ -147,6 +153,7 @@
             drop: {value:false},
             allowrate: {value:false},
             outputs: { value: 1},
+            allowburst: {value:false},
         },
         inputs:1,
         outputs:1,
@@ -286,6 +293,20 @@
                     $("#rate-details-per-topic").show();
                 }
             }).trigger("change");
+
+            $("#burst-help").tooltipster({
+                content: RED._("delay.tips.allowburst"),
+                position: 'right',
+                trigger: 'hover'
+            });
+            $("#node-input-drop-select").on("change", function() {
+                if (this.value === "drop") {
+                    $("#rate-burst-option").show();
+                } else {
+                    $("#rate-burst-option").hide();
+                    $("#node-input-allowburst").prop('checked', false);
+                }
+            }).trigger("change");
         },
         oneditsave: function() {
             var action = $("#node-input-delay-action").val();
@@ -301,6 +322,7 @@
                 }
                 var dropType = $("#node-input-drop-select").val();
                 this.drop = dropType !== "queue";
+                this.allowburst = dropType === "drop" && $("#node-input-allowburst").is(":checked");
                 $("#node-input-outputs").val(dropType === "emit"?2:1);
             }
         }

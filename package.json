@@ -1,7 +1,7 @@
 {
   "name": "@eikaramba/node-red-ratelimiter",
   "version": "1.0.0",
-  "description": "official delay node changed so that messages are dropped and not queued",
+  "description": "A modified version of the [official Node-RED delay node](https://flowfuse.com/node-red/core-nodes/delay/) that implements true rate limiting with immediate message processing.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eikaramba/node-red-contrib-ratelimiter.git"
@@ -14,7 +14,7 @@
     "rate",
     "delay",
     "queueing",
-    "burst",
+    "burst"
   ],
   "author": "eikaramba",
   "bugs": {

@@ -1,0 +1,72 @@
+{
+    "rate-limiterer": {
+        "action": "Action",
+        "for": "For",
+        "delaymsg": "Delay each message",
+        "delayfixed": "Fixed delay",
+        "delayvarmsg": "Override delay with msg.delay",
+        "randomdelay": "Random delay",
+        "limitrate": "Rate Limit",
+        "limitall": "All messages",
+        "limittopic": "For each msg.topic",
+        "fairqueue": "Send each topic in turn",
+        "timedqueue": "Send all topics",
+        "milisecs": "Milliseconds",
+        "secs": "Seconds",
+        "sec": "Second",
+        "mins": "Minutes",
+        "min": "Minute",
+        "hours": "Hours",
+        "hour": "Hour",
+        "days": "Days",
+        "day": "Day",
+        "between": "Between",
+        "and": "&",
+        "rate": "Rate",
+        "msgper": "msg(s) per",
+        "queuemsg": "Queue intermediate messages",
+        "dropmsg": "Drop intermediate messages",
+        "sendmsg": "Send intermediate messages on 2nd output",
+        "allowrate": "allow msg.rate (in ms) to override rate",
+        "allowburst": "Allow Burst",
+        "tips": {
+            "allowburst": "When enabled, unused message slots accumulate over time. For example, with 1 msg/hour, after 4 hours of no messages, up to 4 messages can be sent immediately."
+        },
+        "label": {
+            "delay": "delay",
+            "variable": "variable",
+            "limit": "limit",
+            "limitTopic": "limit topic",
+            "random": "random",
+            "rate": "rate",
+            "random-first": "first random value",
+            "random-last": "last random value",
+            "units": {
+                "second": {
+                    "plural": "Seconds",
+                    "singular": "Second"
+                },
+                "minute": {
+                    "plural": "Minutes",
+                    "singular": "Minute"
+                },
+                "hour": {
+                    "plural": "Hours",
+                    "singular": "Hour"
+                },
+                "day": {
+                    "plural": "Days",
+                    "singular": "Day"
+                }
+            }
+        },
+        "errors": {
+            "too-many": "too many pending messages in delay node",
+            "invalid-timeout": "Invalid delay value",
+            "invalid-rate": "Invalid rate value",
+            "invalid-rate-unit": "Invalid rate unit value",
+            "invalid-random-first": "Invalid first random value",
+            "invalid-random-last": "Invalid last random value"
+        }
+    }   
+}
