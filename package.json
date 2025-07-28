@@ -1,6 +1,6 @@
 {
   "name": "@eikaramba/node-red-ratelimiter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A modified version of the [official Node-RED delay node](https://flowfuse.com/node-red/core-nodes/delay/) that implements true rate limiting with immediate message processing.",
   "repository": {
     "type": "git",
