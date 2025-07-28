@@ -184,6 +184,12 @@
                     $("#node-input-allowburst").prop('checked', false);
                 }
             }).trigger("change");
+            
+            if (this.pauseType == "rate") {
+                $("#node-input-rate-type").val('all');
+            } else if (this.pauseType == "topic") {
+                $("#node-input-rate-type").val('topic');
+            }
         },
         oneditsave: function() {
             action = $("#node-input-rate-type").val();
